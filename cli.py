@@ -3,85 +3,68 @@ from common.types import TaskState, Task
 import asyncclick as click
 import asyncio
 from uuid import uuid4
-import urllib
+from google.adk import Runner
+from google.adk.sessions.in_memory_session_service import InMemorySessionService
+from google.adk.memory.in_memory_memory_service import InMemoryMemoryService
+from google.adk.artifacts import InMemoryArtifactService
+from google.adk.events.event import Event as ADKEvent
+from google.adk.events.event_actions import EventActions as ADKEventActions
 
-@click.command()
-@click.option("--agent", default="http://localhost:10000")
-@click.option("--session", default=0)
-@click.option("--history", default=False)
-async def cli(agent, session, history):
-    card_resolver = A2ACardResolver(agent)
-    card = card_resolver.get_agent_card()
+from common import types
+from host_agent import HostAgent
+from google.genai import types
 
-    print("======= Agent Card ========")
-    print(card.model_dump_json(exclude_none=True))
+#manage agent context
+class AgentManager:
+    def __init__(self):
+        self._session_service = InMemorySessionService()
+        self._artifact_service = InMemoryArtifactService()
+        self._memory_service = InMemoryMemoryService()
+        self._host_agent = HostAgent([],None)
+        self.app_name = "host"
+        self.user_id = "user1"
 
-        
-    client = A2AClient(agent_card=card)
-    if session == 0:
-        sessionId = uuid4().hex
-    else:
-        sessionId = session
+    def init_agent(self):
+        self._host_runner = Runner(
+        app_name=self.app_name,
+        agent=self._host_agent.create_agent(),
+        artifact_service=self._artifact_service,
+        session_service=self._session_service,
+        memory_service=self._memory_service,
+    )
 
-    continue_loop = True
-    streaming = card.capabilities.streaming
+    def register_agent(self, url):
+        card_resolver = A2ACardResolver(url)
+        card = card_resolver.get_agent_card()
+        self._host_agent.register_agent_card(card)
 
-    while continue_loop:
-        taskId = uuid4().hex
-        print("=========  starting a new task ======== ")
-        continue_loop = await completeTask(client, streaming, taskId, sessionId)
 
-        if history and continue_loop:
-            print("========= history ======== ")
-            task_response = await client.get_task({"id": taskId, "historyLength": 10})
-            print(task_response.model_dump_json(include={"result": {"history": True}}))
+runner = AgentManager()
+runner.init_agent()
 
-async def completeTask(client: A2AClient, streaming, taskId, sessionId):
+#TODO:注册远程agent
+runner.register_agent("http://localhost:10002")
+
+@click.command
+async def invoke():
+    #input 
     prompt = click.prompt(
         "\nWhat do you want to send to the agent? (:q or quit to exit)"
     )
-    if prompt == ":q" or prompt == "quit":
-        return False
+    
+    #session info
+    session_id = uuid4().hex
+    print("session_id:", session_id)
+    session = runner._session_service.create_session(app_name=runner.app_name, user_id=runner.user_id, session_id=session_id)
+    content = types.Content(role='user', parts=[types.Part(text=prompt)])
+    events = runner._host_runner.run(user_id=runner.user_id, session_id=session_id, new_message=content)
 
-    payload = {
-        "id": taskId,
-        "sessionId": sessionId,
-        "acceptedOutputModes": ["text"],
-        "message": {
-            "role": "user",
-            "parts": [
-                {
-                    "type": "text",
-                    "text": prompt,
-                }
-            ],
-        },
-    }
-
-
-    taskResult = None
-    if streaming:
-        response_stream = client.send_task_streaming(payload)
-        async for result in response_stream:
-            print(f"stream event => {result.model_dump_json(exclude_none=True)}")
-        taskResult = await client.get_task({"id": taskId})
-    else:
-        taskResult = await client.send_task(payload)
-        print(f"\n{taskResult.model_dump_json(exclude_none=True)}")
-
-    ## if the result is that more input is required, loop again.
-    state = TaskState(taskResult.result.status.state)
-    if state.name == TaskState.INPUT_REQUIRED.name:
-        return await completeTask(
-            client,
-            streaming,
-            taskId,
-            sessionId
-        )
-    else:
-        ## task is complete
-        return True
+    for event in events:
+        if event.is_final_response():
+            final_response = event.content.parts[0].text
+            print("Agent Response: ", final_response)
 
 
 if __name__ == "__main__":
-    asyncio.run(cli())
+
+    asyncio.run(invoke())

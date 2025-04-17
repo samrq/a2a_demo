@@ -65,7 +65,7 @@ class A2AServer:
         try:
             body = await request.json()
             json_rpc_request = A2ARequest.validate_python(body)
-
+            print("requset:", json_rpc_request)
             if isinstance(json_rpc_request, GetTaskRequest):
                 result = await self.task_manager.on_get_task(json_rpc_request)
             elif isinstance(json_rpc_request, SendTaskRequest):
@@ -88,6 +88,7 @@ class A2AServer:
                 logger.warning(f"Unexpected request type: {type(json_rpc_request)}")
                 raise ValueError(f"Unexpected request type: {type(request)}")
 
+            print("resp:", result)
             return self._create_response(result)
 
         except Exception as e:
@@ -114,6 +115,7 @@ class A2AServer:
 
             return EventSourceResponse(event_generator(result))
         elif isinstance(result, JSONRPCResponse):
+            print("debug:", result.model_dump(exclude_none=True))
             return JSONResponse(result.model_dump(exclude_none=True))
         else:
             logger.error(f"Unexpected result type: {type(result)}")

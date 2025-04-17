@@ -1,0 +1,25 @@
+{
+"result":
+{
+    "id":"123456",
+    "sessionId":"123456",
+    "status":
+    {
+        "state":"completed"
+    },
+    "artifacts":
+    [
+        {
+            "name":"mock",
+            "description":"mock artifact",
+            "parts":
+            [
+                {
+                    "type":"text",
+                    "text":"{\"role\":\"model\",\"content\":\"this is a mock resp\"}"
+                }
+            ]
+        }
+    ]
+}
+}

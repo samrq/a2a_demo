@@ -14,7 +14,7 @@ USER_ID = "user"
 SESSION_ID = uuid4().hex
 
 root_agent = LlmAgent(
-        model= LiteLlm(model="ollama_chat/qwen2.5:14b"),
+        model= LiteLlm(model="ollama_chat/mistral-small3.1"),
         name="agent",
         description=(
             "you are a helpful agent"
